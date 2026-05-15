@@ -8,8 +8,9 @@ from db.session import get_db
 from models.db.rep import Rep
 from core.auth.security import decode_access_token
 
-# tokenUrl is used by Swagger's "Authorize" button
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+# tokenUrl points to the form-data endpoint so Swagger's Authorize button
+# can complete the OAuth2 password flow correctly.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 
 def get_current_rep(
