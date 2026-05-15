@@ -1,3 +1,4 @@
+# backend/models/schemas/outcome.py
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -17,9 +18,9 @@ class VisitOutcome(BaseModel):
 
 class OutcomeRecord(BaseModel):
     entity_id:        str
-    rep_id:           str
+    rep_id:           Optional[str] = None   # supplied by JWT server-side; client value is ignored
     outcome_rating:   int
     outcome_type:     str
     actions_taken:    list[str]
-    actions_accepted: list[str] = []   # which NBA recommendations rep actually followed
+    actions_accepted: list[str] = []         # which NBA recommendations rep actually followed
     notes:            Optional[str] = None
