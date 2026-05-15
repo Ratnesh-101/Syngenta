@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 from fastapi import HTTPException, status
 
 from models.db.rep import Rep
@@ -39,7 +38,6 @@ class AuthService:
         if not phone:
             raise HTTPException(status_code=400, detail="Invalid phone number")
 
-        # Conflict checks across BOTH the rep table and existing identities.
         if self._find_rep_by_email(db, email):
             raise HTTPException(status_code=409, detail="Email already registered")
         if self._find_identity(db, "password", email):
@@ -56,10 +54,8 @@ class AuthService:
             is_active=True,
         )
         db.add(rep)
-        db.flush()  # get rep.id without committing
+        db.flush()
 
-        # Attach a password identity AND an unverified phone identity (so future OTP
-        # login to that phone will resolve to this same account).
         db.add(AuthIdentity(
             id=str(uuid.uuid4()),
             rep_id=rep.id,
@@ -74,7 +70,7 @@ class AuthService:
             provider="whatsapp_otp",
             identifier=phone,
             credential=None,
-            verified_at=None,  # phone isn't verified until an OTP succeeds
+            verified_at=None,
         ))
         db.commit()
         db.refresh(rep)
@@ -85,7 +81,6 @@ class AuthService:
         if not identifier:
             raise HTTPException(status_code=400, detail="Identifier required")
 
-        # Identifier can be email (→ password identity) or phone (→ phone identity → owning rep's password identity)
         if is_email(identifier):
             ident = self._find_identity(db, "password", identifier.lower())
         else:
@@ -110,6 +105,54 @@ class AuthService:
             raise HTTPException(status_code=403, detail="Account disabled")
         return rep
 
+    # ---------- OTP-based login / auto-signup ----------
+
+    def login_or_signup_with_phone(self, db: Session, phone: str) -> Rep:
+        """Called AFTER the OTP code has already been verified. Finds an existing
+        Rep linked to this phone, or auto-creates one. Marks the phone identity
+        as verified. Returns the Rep ready for token issuance.
+        """
+        phone = normalize_phone(phone)
+        if not phone:
+            raise HTTPException(status_code=400, detail="Invalid phone number")
+
+        ident = self._find_identity(db, "whatsapp_otp", phone)
+
+        if ident:
+            # Existing phone identity → log into the owning rep
+            rep = db.query(Rep).filter(Rep.id == ident.rep_id).first()
+            if not rep or not rep.is_active:
+                raise HTTPException(status_code=403, detail="Account disabled")
+            # Mark verified if it wasn't already
+            if not ident.verified_at:
+                ident.verified_at = datetime.utcnow()
+                db.commit()
+            return rep
+
+        # Auto-create a new Rep with this phone as the sole identity
+        rep = Rep(
+            id=str(uuid.uuid4()),
+            rep_id=None,                      # not linked to a Syngenta territory yet
+            name=f"User {phone[-4:]}",        # placeholder; user can edit later
+            primary_email=None,
+            role="rep",
+            is_active=True,
+        )
+        db.add(rep)
+        db.flush()
+
+        db.add(AuthIdentity(
+            id=str(uuid.uuid4()),
+            rep_id=rep.id,
+            provider="whatsapp_otp",
+            identifier=phone,
+            credential=None,
+            verified_at=datetime.utcnow(),
+        ))
+        db.commit()
+        db.refresh(rep)
+        return rep
+
     # ---------- seeding ----------
 
     def ensure_seed_rep(
@@ -123,7 +166,6 @@ class AuthService:
         password: str,
         role: str = "rep",
     ) -> Rep:
-        """Idempotent: create the demo rep + both identities if missing."""
         email = email.lower()
         phone = normalize_phone(phone)
 
@@ -156,7 +198,7 @@ class AuthService:
             provider="whatsapp_otp",
             identifier=phone,
             credential=None,
-            verified_at=datetime.utcnow(),  # pre-verified for the demo rep
+            verified_at=datetime.utcnow(),
         ))
         db.commit()
         db.refresh(rep)
