@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from services.visit_service import VisitService
+from datetime import datetime
 
 router = APIRouter()
 service = VisitService()
