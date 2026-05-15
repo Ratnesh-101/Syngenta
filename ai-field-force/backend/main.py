@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from db.session import engine, Base
-from api.routes import visits, farmers, signals, outcomes
+from api.routes import visits, farmers, signals, outcomes, weights
 
 # Import all models so SQLAlchemy knows about them before creating tables
 from models.db import farmers as farmers_model
@@ -20,6 +20,7 @@ app.include_router(visits.router,   prefix="/visits",   tags=["Visits"])
 app.include_router(farmers.router,  prefix="/farmers",  tags=["Farmers"])
 app.include_router(signals.router,  prefix="/signals",  tags=["Signals"])
 app.include_router(outcomes.router, prefix="/outcomes", tags=["Outcomes"])
+app.include_router(weights.router,  prefix="/weights",  tags=["Weights"])
 
 @app.get("/")
 def root():
