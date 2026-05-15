@@ -16,9 +16,10 @@ class VisitOutcome(BaseModel):
 
 
 class OutcomeRecord(BaseModel):
-    entity_id:      str
-    rep_id:         str
-    outcome_rating: int
-    outcome_type:   str
-    actions_taken:  list[str]
-    notes:          Optional[str] = None
+    entity_id:        str
+    rep_id:           str
+    outcome_rating:   int
+    outcome_type:     str
+    actions_taken:    list[str]
+    actions_accepted: list[str] = []   # which NBA recommendations rep actually followed
+    notes:            Optional[str] = None
