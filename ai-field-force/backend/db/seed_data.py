@@ -55,6 +55,53 @@ def load_growers(rep_tehsils):
                 growers.append(r)
     return growers
 
+def load_tehsil_inventory(rep_tehsils):
+    # Step 1: tehsil -> retailer_ids
+    tehsil_retailers = defaultdict(list)
+    with open("db/data/retailers.csv") as f:
+        for r in csv.DictReader(f):
+            if r["tehsil"] in rep_tehsils:
+                tehsil_retailers[r["tehsil"]].append(r["retailer_id"])
+
+    rep_retailer_set = set(
+        rid for retailers in tehsil_retailers.values() for rid in retailers
+    )
+
+    # Step 2: load inventory for these retailers
+    retailer_inventory = defaultdict(list)
+    with open("db/data/retailer_inventory_weekly.csv") as f:
+        for r in csv.DictReader(f):
+            if r["retailer_id"] in rep_retailer_set:
+                retailer_inventory[r["retailer_id"]].append(r)
+
+    if not retailer_inventory:
+        return {}
+
+    # Step 3: latest week
+    latest_week = max(
+        r["week_end_date"]
+        for rows in retailer_inventory.values()
+        for r in rows
+    )
+
+    # Step 4: compute per-tehsil inventory_pct
+    tehsil_inv = {}
+    for tehsil, retailers in tehsil_retailers.items():
+        all_qtys = []
+        for rid in retailers:
+            latest = [r for r in retailer_inventory[rid] if r["week_end_date"] == latest_week]
+            for r in latest:
+                all_qtys.append(int(r["sku_qty"]))
+        if all_qtys:
+            oos = sum(1 for q in all_qtys if q == 0)
+            pct = round(1.0 - (oos / len(all_qtys)), 2)
+            tehsil_inv[tehsil] = {
+                "inventory_pct": pct,
+                "inventory_shortage_level": round(1.0 - pct, 2)
+            }
+
+    return tehsil_inv
+
 def seed():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -68,11 +115,15 @@ def seed():
 
     rep_tehsils = set(json.loads(rep_info[TARGET_REP]["tehsil_list"]))
     rep_district = rep_info[TARGET_REP]["district"]
-    rep_state = rep_info[TARGET_REP]["state"]
-    days_since = (TODAY - last_visits[TARGET_REP]).days
+    rep_state    = rep_info[TARGET_REP]["state"]
+    days_since   = (TODAY - last_visits[TARGET_REP]).days
 
-    growers = load_growers(rep_tehsils)
+    growers      = load_growers(rep_tehsils)
+    tehsil_inv   = load_tehsil_inventory(rep_tehsils)
+
     print(f"Seeding {len(growers)} growers for {TARGET_REP} ({rep_district}, {rep_state})")
+    print(f"Days since last visit: {days_since}")
+    print(f"Tehsils with real inventory: {len(tehsil_inv)}")
 
     entities = []
     for g in growers:
@@ -80,8 +131,8 @@ def seed():
             id=g["grower_id"],
             name=f"Grower {g['grower_id'][-5:]}",
             type="farmer",
-            lat=round(random.uniform(27.0, 29.5), 4),   # Bikaner region lat
-            lng=round(random.uniform(72.0, 74.5), 4),   # Bikaner region lng
+            lat=round(random.uniform(27.0, 29.5), 4),
+            lng=round(random.uniform(72.0, 74.5), 4),
             region=f"{g['district']}, {g['state']}",
             rep_id=TARGET_REP,
             last_visited_at=datetime.combine(
@@ -94,30 +145,31 @@ def seed():
     db.commit()
 
     for entity, g in entities:
-        # Parse crop calendar
+        # Crop calendar
         try:
-            cal = json.loads(g["grower_crop_calendar"])
-            crop = cal.get("crop", "wheat")
+            cal   = json.loads(g["grower_crop_calendar"])
+            crop  = cal.get("crop", "wheat")
             stages = [s["stage"] for s in cal.get("stages", [])]
             crop_stage = stages[-1] if stages else "unknown"
         except Exception:
             crop = "wheat"
             crop_stage = "unknown"
 
-        pest_severity = PEST_SEVERITY_MAP.get(crop, "low")
+        pest_severity    = PEST_SEVERITY_MAP.get(crop, "low")
         crop_sensitivity = CROP_SENSITIVITY_MAP.get(crop, 0.5)
 
-        # Farm size drives revenue potential
+        # Real inventory from tehsil
+        inv = tehsil_inv.get(g["tehsil"], {})
+        inventory_pct      = inv.get("inventory_pct", 0.5)
+        inventory_shortage = inv.get("inventory_shortage_level", 0.5)
+
+        # Revenue from farm size
         farm_size = float(g.get("grower_farm_size") or 1.0)
         revenue_potential = min(100000.0, farm_size * 12000)
 
-        # Inventory shortage based on farm size (smaller farms run out faster)
-        inventory_shortage = round(min(0.95, max(0.1, 1.0 - (farm_size / 10.0))), 2)
-        inventory_pct = round(1.0 - inventory_shortage, 2)
-
         # Engagement signals
-        product_scanned = g.get("product_scan", "false").lower() == "true"
-        campaign_attended = g.get("offline_campaign_attended", "false").lower() == "true"
+        product_scanned    = g.get("product_scan", "false").lower() == "true"
+        campaign_attended  = g.get("offline_campaign_attended", "false").lower() == "true"
         competitor_activity = not product_scanned and not campaign_attended
 
         signal = Signal(
