@@ -15,3 +15,13 @@ def get_visit_brief(entity_id: str, rep_id: str = "R-01"):
 @router.get("/{entity_id}/explain")
 def get_visit_explanation(entity_id: str, rank: int = 1):
     return service.get_visit_explanation(entity_id, rank)
+
+@router.get("/today/export")
+def export_today_visits(rep_id: str = "R-01"):
+    visits = service.generate_daily_priority_list(rep_id)
+    return {
+        "exported_at": datetime.utcnow().isoformat(),
+        "rep_id":      rep_id,
+        "total":       len(visits),
+        "visits":      visits
+    }
