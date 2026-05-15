@@ -88,3 +88,38 @@ class VisitService:
             item["visit_sequence_position"] = i + 1
 
         return ranked
+    def get_visit_brief(self, entity_id: str, rep_id: str) -> dict:
+        db = SessionLocal()
+
+        entity = db.query(FarmerRetailer).filter(
+            FarmerRetailer.id == entity_id
+        ).first()
+
+        signal_row = db.query(Signal).filter(
+            Signal.entity_id == entity_id
+        ).first()
+
+        db.close()
+
+        if not entity:
+            return {"error": "Entity not found"}
+
+        payload = signal_row.payload if signal_row else {}
+
+        context = {
+            "id":     entity.id,
+            "name":   entity.name,
+            "type":   entity.type,
+            "region": entity.region,
+            **payload
+        }
+
+        nba_actions = get_next_best_actions(context)
+        briefing    = run_briefing_chain(context, nba_actions)
+
+        return {
+            "entity_id":     entity_id,
+            "name":          entity.name,
+            "briefing":      briefing,
+            "nba_actions":   nba_actions,
+        }

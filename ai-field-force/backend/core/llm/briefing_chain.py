@@ -1,13 +1,17 @@
-
-
-# core/llm/briefing_chain.py
-
+import os
+from dotenv import load_dotenv
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain_openai import ChatOpenAI
 from core.llm.prompts.briefing import BRIEFING_PROMPT
 
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
+load_dotenv()
+
+llm = ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=0.3,
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 
 def run_briefing_chain(context: dict, nba_actions: list) -> str:
     prompt = PromptTemplate(
@@ -25,7 +29,7 @@ def format_profile(ctx: dict) -> str:
     return f"{ctx['name']} | {ctx['type']} | Region: {ctx.get('region', 'unknown')}"
 
 def format_signals(ctx: dict) -> str:
-    s = ctx["signals"]
+    s = ctx.get("signals", ctx)
     return (
         f"Pest: {s.get('pest_alert_severity', 'none')} | "
         f"Stock shortage: {s.get('inventory_shortage_level', 0):.0%} | "
@@ -34,7 +38,9 @@ def format_signals(ctx: dict) -> str:
     )
 
 def format_actions(actions: list) -> str:
+    if not actions:
+        return "General relationship maintenance visit"
     return "\n".join(
-        f"{i+1}. {a['action']}: {a['detail']}"
+        f"{i+1}. {a.get('action', '')}: {a.get('detail', '')}"
         for i, a in enumerate(actions)
     )
