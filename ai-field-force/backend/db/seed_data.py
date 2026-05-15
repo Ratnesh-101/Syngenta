@@ -108,7 +108,7 @@ def seed():
         crop_sensitivity = CROP_SENSITIVITY_MAP.get(crop, 0.5)
 
         # Farm size drives revenue potential
-        farm_size = float(g.get("grower_farm_size", 1.0))
+        farm_size = float(g.get("grower_farm_size") or 1.0)
         revenue_potential = min(100000.0, farm_size * 12000)
 
         # Inventory shortage based on farm size (smaller farms run out faster)
