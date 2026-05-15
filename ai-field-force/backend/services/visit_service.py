@@ -9,7 +9,8 @@ from core.ml.weights                    import SIGNAL_WEIGHTS
 from models.db.farmers                  import FarmerRetailer
 from models.db.signal                   import Signal
 from db.session                         import SessionLocal
-
+from core.llm.briefing_chain import run_briefing_chain
+from core.llm.explainer_chain import run_explainer_chain
 
 class VisitService:
 
