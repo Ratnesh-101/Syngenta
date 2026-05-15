@@ -15,7 +15,7 @@ class OutcomeService:
     def record_outcome(self, outcome: OutcomeRecord) -> dict:
         # 1. Verify entity exists
         entity = self.db.query(FarmerRetailer).filter(
-            FarmerRetailer.entity_id == outcome.entity_id
+            FarmerRetailer.id == outcome.entity_id
         ).first()
 
         if not entity:
