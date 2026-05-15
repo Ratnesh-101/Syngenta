@@ -2,7 +2,6 @@ from sqlalchemy.orm import Session
 from models.db.farmers import FarmerRetailer
 from models.db.signal import Signal
 from core.deterministic.anomaly_detector import run_anomaly_checks
-import json
 
 
 class SignalService:
@@ -27,7 +26,7 @@ class SignalService:
             if not signal:
                 continue
 
-            payload = json.loads(signal.payload) if isinstance(signal.payload, str) else signal.payload
+            payload = signal.payload or {}
 
             # 3. Run anomaly checks
             anomalies = run_anomaly_checks(payload)
