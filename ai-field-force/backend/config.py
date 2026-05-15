@@ -1,14 +1,13 @@
-# models/db/signal.py
+# backend/config.py
+import os
+from dotenv import load_dotenv
 
-from sqlalchemy import Column, String, Float, DateTime, JSON
+load_dotenv()
 
-class Signal(Base):
-    __tablename__ = "signals"
+# OpenAI (already used elsewhere — re-exposed here for consistency)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-    id          = Column(String, primary_key=True)
-    entity_id   = Column(String)
-    signal_type = Column(String)
-    severity    = Column(String, nullable=True)
-    payload     = Column(JSON)
-    expires_at  = Column(DateTime, nullable=True)
-    created_at  = Column(DateTime)
+# JWT settings
+JWT_SECRET     = os.getenv("JWT_SECRET", "dev-secret-change-me")
+JWT_ALGORITHM  = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "10080"))  # 7 days default
