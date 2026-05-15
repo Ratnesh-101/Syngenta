@@ -11,7 +11,7 @@ def get_today_visits(rep_id: str = "R-01"):
 @router.get("/{entity_id}/brief")
 def get_visit_brief(entity_id: str, rep_id: str = "R-01"):
     return service.get_visit_brief(entity_id, rep_id)
+
 @router.get("/{entity_id}/explain")
-def get_visit_explanation(entity_id: str, rank: int = 1, db: Session = Depends(get_db)):
-    service = VisitService(db)
+def get_visit_explanation(entity_id: str, rank: int = 1):
     return service.get_visit_explanation(entity_id, rank)
