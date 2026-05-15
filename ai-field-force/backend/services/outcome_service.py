@@ -31,7 +31,7 @@ class OutcomeService:
             visited_at=datetime.utcnow(),
             outcome_rating=outcome.outcome_rating,
             outcome_type=outcome.outcome_type,
-            actions_taken=outcome.actions_taken,
+            actions_taken=outcome.actions_taken + outcome.actions_accepted,
             notes=outcome.notes,
             signals_at_visit={}
         )
@@ -42,15 +42,22 @@ class OutcomeService:
         # 4. Bayesian weight update
         updated_weights = update_weights(
             current_weights=SIGNAL_WEIGHTS,
-            signals_at_visit={},   # will snapshot signals in next iteration
+            signals_at_visit={},
             outcome_rating=outcome.outcome_rating
         )
 
+        # 5. Recommendation acceptance rate
+        acceptance_rate = (
+            round(len(outcome.actions_accepted) / len(outcome.actions_taken), 2)
+            if outcome.actions_taken else 0.0
+        )
+
         return {
-            "status": "recorded",
-            "outcome_id": db_outcome.id,
-            "entity_id": outcome.entity_id,
-            "outcome_rating": outcome.outcome_rating,
-            "success": success,
-            "weights_updated": updated_weights
+            "status":                       "recorded",
+            "outcome_id":                   db_outcome.id,
+            "entity_id":                    outcome.entity_id,
+            "outcome_rating":               outcome.outcome_rating,
+            "success":                      success,
+            "recommendation_acceptance_rate": acceptance_rate,
+            "weights_updated":              updated_weights
         }
