@@ -64,22 +64,3 @@ def login_form(
 @router.get("/me", response_model=RepProfile)
 def me(current: Rep = Depends(get_current_rep)):
     return RepProfile.model_validate(current)
-
-
-# ---------- backward-compat aliases (old paths used by your test scripts) ----------
-# These will be removed once frontend has migrated.
-
-@router.post("/register", response_model=TokenResponse, status_code=201,
-             summary="[Deprecated] Use /auth/register/password",
-             deprecated=True)
-def register_legacy(data: PasswordRegisterRequest, db: Session = Depends(get_db)):
-    rep = service.register_with_password(db, data)
-    return _token_response(rep)
-
-
-@router.post("/login", response_model=TokenResponse,
-             summary="[Deprecated] Use /auth/login/password",
-             deprecated=True)
-def login_legacy(data: PasswordLoginRequest, db: Session = Depends(get_db)):
-    rep = service.login_with_password(db, data.identifier, data.password)
-    return _token_response(rep)
