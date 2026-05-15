@@ -9,3 +9,11 @@ class VisitOutcome(BaseModel):
     outcome_type:     str            # "sale" | "complaint_resolved" | "intel" | "no_result"
     notes:            str
     signals_at_visit: dict           # snapshot of features used
+
+class OutcomeRecord(BaseModel):
+    entity_id:      str
+    rep_id:         str
+    outcome_rating: int                 # 1–5
+    outcome_type:   str                 # "sale" | "complaint_resolved" | "no_result"
+    actions_taken:  list[str]
+    notes:          Optional[str]
