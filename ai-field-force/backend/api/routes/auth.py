@@ -1,5 +1,6 @@
 # backend/api/routes/auth.py
 from fastapi import APIRouter, Depends
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from db.session import get_db
@@ -19,9 +20,7 @@ router = APIRouter()
 service = AuthService()
 
 
-@router.post("/register", response_model=TokenResponse, status_code=201)
-def register(data: RegisterRequest, db: Session = Depends(get_db)):
-    rep = service.register(db, data)
+def _token_response(rep: Rep) -> TokenResponse:
     token = create_access_token(
         subject=rep.id,
         extra_claims={"rep_id": rep.rep_id, "email": rep.email},
@@ -31,20 +30,31 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
         expires_in_minutes=JWT_EXPIRE_MINUTES,
         rep=RepProfile.model_validate(rep),
     )
+
+
+@router.post("/register", response_model=TokenResponse, status_code=201)
+def register(data: RegisterRequest, db: Session = Depends(get_db)):
+    rep = service.register(db, data)
+    return _token_response(rep)
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
+    """JSON login. Body: {"identifier": "...", "password": "..."}"""
     rep = service.authenticate(db, data.identifier, data.password)
-    token = create_access_token(
-        subject=rep.id,
-        extra_claims={"rep_id": rep.rep_id, "email": rep.email},
-    )
-    return TokenResponse(
-        access_token=token,
-        expires_in_minutes=JWT_EXPIRE_MINUTES,
-        rep=RepProfile.model_validate(rep),
-    )
+    return _token_response(rep)
+
+
+@router.post("/token", response_model=TokenResponse)
+def login_form(
+    form: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    """OAuth2 form-data login. Used by Swagger's Authorize button.
+    Treats the `username` field as our `identifier` (email or phone).
+    """
+    rep = service.authenticate(db, form.username, form.password)
+    return _token_response(rep)
 
 
 @router.get("/me", response_model=RepProfile)
