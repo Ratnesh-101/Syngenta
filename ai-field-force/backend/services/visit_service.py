@@ -124,3 +124,42 @@ class VisitService:
             "briefing":      briefing,
             "nba_actions":   nba_actions,
         }
+    def get_visit_explanation(self, entity_id: str, rank: int) -> dict:
+        db = SessionLocal()
+
+        entity = db.query(FarmerRetailer).filter(
+            FarmerRetailer.id == entity_id
+        ).first()
+
+        signal_row = db.query(Signal).filter(
+            Signal.entity_id == entity_id
+        ).first()
+
+        db.close()
+
+        if not entity:
+            return {"error": "Entity not found"}
+
+        payload = signal_row.payload if signal_row else {}
+
+        context = {
+            "id":       entity.id,
+            "name":     entity.name,
+            "type":     entity.type,
+            "region":   entity.region,
+            "rank":     rank,
+            "overrides": [],
+            **payload
+        }
+
+        features  = build_feature_vector({"id": entity.id, **payload}, {entity.id: payload})
+        reasons   = extract_top_reasons(features, self.weights, [])
+        explanation = run_explainer_chain(context, reasons)
+
+        return {
+            "entity_id":   entity_id,
+            "name":        entity.name,
+            "rank":        rank,
+            "explanation": explanation,
+            "reasons":     reasons
+        }
