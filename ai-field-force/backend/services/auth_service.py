@@ -1,7 +1,7 @@
 # backend/services/auth_service.py
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -108,10 +108,6 @@ class AuthService:
     # ---------- OTP-based login / auto-signup ----------
 
     def login_or_signup_with_phone(self, db: Session, phone: str) -> Rep:
-        """Called AFTER the OTP code has already been verified. Finds an existing
-        Rep linked to this phone, or auto-creates one. Marks the phone identity
-        as verified. Returns the Rep ready for token issuance.
-        """
         phone = normalize_phone(phone)
         if not phone:
             raise HTTPException(status_code=400, detail="Invalid phone number")
@@ -119,21 +115,18 @@ class AuthService:
         ident = self._find_identity(db, "whatsapp_otp", phone)
 
         if ident:
-            # Existing phone identity → log into the owning rep
             rep = db.query(Rep).filter(Rep.id == ident.rep_id).first()
             if not rep or not rep.is_active:
                 raise HTTPException(status_code=403, detail="Account disabled")
-            # Mark verified if it wasn't already
             if not ident.verified_at:
                 ident.verified_at = datetime.utcnow()
                 db.commit()
             return rep
 
-        # Auto-create a new Rep with this phone as the sole identity
         rep = Rep(
             id=str(uuid.uuid4()),
-            rep_id=None,                      # not linked to a Syngenta territory yet
-            name=f"User {phone[-4:]}",        # placeholder; user can edit later
+            rep_id=None,
+            name=f"User {phone[-4:]}",
             primary_email=None,
             role="rep",
             is_active=True,
@@ -153,21 +146,137 @@ class AuthService:
         db.refresh(rep)
         return rep
 
+    # ---------- Google-based login / auto-signup ----------
+
+    def login_or_signup_with_google(self, db: Session, info: Dict[str, Any]) -> Rep:
+        """`info` is the verified payload from google_verify.verify_google_id_token().
+        Resolution order:
+          1) If a Rep already has a google identity for this `sub` → that account.
+          2) Else if a Rep has primary_email matching the verified Google email →
+             that account, AND we attach a new google identity to it.
+          3) Else create a new Rep with this email + Google identity.
+        """
+        google_sub = info["sub"]
+        email      = info["email"].lower().strip()
+        name       = info.get("name") or email.split("@")[0]
+
+        # 1) Existing google identity?
+        ident = self._find_identity(db, "google", google_sub)
+        if ident:
+            rep = db.query(Rep).filter(Rep.id == ident.rep_id).first()
+            if not rep or not rep.is_active:
+                raise HTTPException(status_code=403, detail="Account disabled")
+            return rep
+
+        # 2) Existing rep with this email? Link Google to it.
+        rep = self._find_rep_by_email(db, email)
+        if rep:
+            if not rep.is_active:
+                raise HTTPException(status_code=403, detail="Account disabled")
+            db.add(AuthIdentity(
+                id=str(uuid.uuid4()),
+                rep_id=rep.id,
+                provider="google",
+                identifier=google_sub,
+                credential=None,
+                verified_at=datetime.utcnow(),
+            ))
+            db.commit()
+            db.refresh(rep)
+            return rep
+
+        # 3) Brand new account.
+        rep = Rep(
+            id=str(uuid.uuid4()),
+            rep_id=None,
+            name=name,
+            primary_email=email,
+            role="rep",
+            is_active=True,
+        )
+        db.add(rep)
+        db.flush()
+
+        db.add(AuthIdentity(
+            id=str(uuid.uuid4()),
+            rep_id=rep.id,
+            provider="google",
+            identifier=google_sub,
+            credential=None,
+            verified_at=datetime.utcnow(),
+        ))
+        db.commit()
+        db.refresh(rep)
+        return rep
+
+    # ---------- account linking (requires logged-in user) ----------
+
+    def link_google_to_current(self, db: Session, rep: Rep, info: Dict[str, Any]) -> Rep:
+        google_sub = info["sub"]
+        existing = self._find_identity(db, "google", google_sub)
+        if existing:
+            if existing.rep_id == rep.id:
+                return rep  # already linked, idempotent
+            raise HTTPException(
+                status_code=409,
+                detail="This Google account is already linked to a different user",
+            )
+
+        db.add(AuthIdentity(
+            id=str(uuid.uuid4()),
+            rep_id=rep.id,
+            provider="google",
+            identifier=google_sub,
+            credential=None,
+            verified_at=datetime.utcnow(),
+        ))
+        db.commit()
+        db.refresh(rep)
+        return rep
+
+    def link_phone_to_current(self, db: Session, rep: Rep, phone: str) -> Rep:
+        """Called AFTER the OTP has been verified for this phone+rep combo."""
+        phone = normalize_phone(phone)
+        existing = self._find_identity(db, "whatsapp_otp", phone)
+        if existing:
+            if existing.rep_id == rep.id:
+                # Already linked; just mark verified.
+                if not existing.verified_at:
+                    existing.verified_at = datetime.utcnow()
+                    db.commit()
+                return rep
+            raise HTTPException(
+                status_code=409,
+                detail="This phone number is already linked to a different user",
+            )
+
+        db.add(AuthIdentity(
+            id=str(uuid.uuid4()),
+            rep_id=rep.id,
+            provider="whatsapp_otp",
+            identifier=phone,
+            credential=None,
+            verified_at=datetime.utcnow(),
+        ))
+        db.commit()
+        db.refresh(rep)
+        return rep
+
     # ---------- seeding ----------
 
     def ensure_seed_rep(
         self,
         db: Session,
         *,
-        rep_id: str,
+        rep_id: Optional[str],
         name: str,
         email: str,
-        phone: str,
+        phone: Optional[str],
         password: str,
         role: str = "rep",
     ) -> Rep:
         email = email.lower()
-        phone = normalize_phone(phone)
+        phone = normalize_phone(phone) if phone else None
 
         rep = self._find_rep_by_email(db, email)
         if rep:
@@ -192,14 +301,15 @@ class AuthService:
             credential=hash_password(password),
             verified_at=datetime.utcnow(),
         ))
-        db.add(AuthIdentity(
-            id=str(uuid.uuid4()),
-            rep_id=rep.id,
-            provider="whatsapp_otp",
-            identifier=phone,
-            credential=None,
-            verified_at=datetime.utcnow(),
-        ))
+        if phone:
+            db.add(AuthIdentity(
+                id=str(uuid.uuid4()),
+                rep_id=rep.id,
+                provider="whatsapp_otp",
+                identifier=phone,
+                credential=None,
+                verified_at=datetime.utcnow(),
+            ))
         db.commit()
         db.refresh(rep)
         return rep
