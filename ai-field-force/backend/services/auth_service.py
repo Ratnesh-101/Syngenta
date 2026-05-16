@@ -1,7 +1,7 @@
 # backend/services/auth_service.py
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -51,6 +51,7 @@ class AuthService:
             name=data.name.strip(),
             primary_email=email,
             role="rep",
+            managed_rep_ids=[],
             is_active=True,
         )
         db.add(rep)
@@ -105,7 +106,7 @@ class AuthService:
             raise HTTPException(status_code=403, detail="Account disabled")
         return rep
 
-    # ---------- OTP-based login / auto-signup ----------
+    # ---------- OTP login ----------
 
     def login_or_signup_with_phone(self, db: Session, phone: str) -> Rep:
         phone = normalize_phone(phone)
@@ -129,6 +130,7 @@ class AuthService:
             name=f"User {phone[-4:]}",
             primary_email=None,
             role="rep",
+            managed_rep_ids=[],
             is_active=True,
         )
         db.add(rep)
@@ -146,21 +148,13 @@ class AuthService:
         db.refresh(rep)
         return rep
 
-    # ---------- Google-based login / auto-signup ----------
+    # ---------- Google login ----------
 
     def login_or_signup_with_google(self, db: Session, info: Dict[str, Any]) -> Rep:
-        """`info` is the verified payload from google_verify.verify_google_id_token().
-        Resolution order:
-          1) If a Rep already has a google identity for this `sub` → that account.
-          2) Else if a Rep has primary_email matching the verified Google email →
-             that account, AND we attach a new google identity to it.
-          3) Else create a new Rep with this email + Google identity.
-        """
         google_sub = info["sub"]
         email      = info["email"].lower().strip()
         name       = info.get("name") or email.split("@")[0]
 
-        # 1) Existing google identity?
         ident = self._find_identity(db, "google", google_sub)
         if ident:
             rep = db.query(Rep).filter(Rep.id == ident.rep_id).first()
@@ -168,7 +162,6 @@ class AuthService:
                 raise HTTPException(status_code=403, detail="Account disabled")
             return rep
 
-        # 2) Existing rep with this email? Link Google to it.
         rep = self._find_rep_by_email(db, email)
         if rep:
             if not rep.is_active:
@@ -185,13 +178,13 @@ class AuthService:
             db.refresh(rep)
             return rep
 
-        # 3) Brand new account.
         rep = Rep(
             id=str(uuid.uuid4()),
             rep_id=None,
             name=name,
             primary_email=email,
             role="rep",
+            managed_rep_ids=[],
             is_active=True,
         )
         db.add(rep)
@@ -209,14 +202,14 @@ class AuthService:
         db.refresh(rep)
         return rep
 
-    # ---------- account linking (requires logged-in user) ----------
+    # ---------- linking ----------
 
     def link_google_to_current(self, db: Session, rep: Rep, info: Dict[str, Any]) -> Rep:
         google_sub = info["sub"]
         existing = self._find_identity(db, "google", google_sub)
         if existing:
             if existing.rep_id == rep.id:
-                return rep  # already linked, idempotent
+                return rep
             raise HTTPException(
                 status_code=409,
                 detail="This Google account is already linked to a different user",
@@ -235,12 +228,10 @@ class AuthService:
         return rep
 
     def link_phone_to_current(self, db: Session, rep: Rep, phone: str) -> Rep:
-        """Called AFTER the OTP has been verified for this phone+rep combo."""
         phone = normalize_phone(phone)
         existing = self._find_identity(db, "whatsapp_otp", phone)
         if existing:
             if existing.rep_id == rep.id:
-                # Already linked; just mark verified.
                 if not existing.verified_at:
                     existing.verified_at = datetime.utcnow()
                     db.commit()
@@ -274,6 +265,7 @@ class AuthService:
         phone: Optional[str],
         password: str,
         role: str = "rep",
+        managed_rep_ids: Optional[List[str]] = None,
     ) -> Rep:
         email = email.lower()
         phone = normalize_phone(phone) if phone else None
@@ -288,6 +280,7 @@ class AuthService:
             name=name,
             primary_email=email,
             role=role,
+            managed_rep_ids=managed_rep_ids or [],
             is_active=True,
         )
         db.add(rep)
