@@ -20,19 +20,24 @@ from core.ml.weights import SIGNAL_WEIGHTS
 
 
 class OutcomeService:
+    """All outcome paths funnel through sync_outcomes() — it handles idempotency,
+    device tracking, and weight updates in one place.
+
+    Identifier conventions in this service:
+      - rep_pk     : Rep.id (uuid) — used for Device foreign keys
+      - rep_id_str : Rep.rep_id (e.g. 'REP_0338') — used for business filtering
+        (which Syngenta territory this outcome belongs to)
+    """
     def __init__(self, db: Session):
         self.db = db
 
-    # ---------- new batch sync path (primary entrypoint) ----------
+    # ---------- batch sync (primary entrypoint) ----------
 
-    def sync_outcomes(self, rep_id: str, payload: SyncRequest) -> SyncResponse:
-        """Idempotent batch ingestion. Same (device_id, client_outcome_id) twice
-        is detected and reported as 'duplicate', not double-inserted.
-        """
+    def sync_outcomes(self, rep_pk: str, rep_id_str: str, payload: SyncRequest) -> SyncResponse:
         device_svc = DeviceService(self.db)
         device = device_svc.upsert_device(
             device_id=payload.device_id,
-            rep_id=rep_id,
+            rep_pk=rep_pk,
             name=payload.device_name,
             platform=payload.device_platform,
         )
@@ -44,7 +49,7 @@ class OutcomeService:
         for item in payload.outcomes:
             try:
                 outcome, was_duplicate = self._upsert_outcome(
-                    rep_id=rep_id,
+                    rep_id_str=rep_id_str,
                     device_id=device.id,
                     item=item,
                 )
@@ -57,8 +62,6 @@ class OutcomeService:
                     ))
                     continue
 
-                # Only "created" outcomes affect weights — otherwise replaying
-                # the same batch would inflate them.
                 last_weights = update_weights(
                     current_weights=last_weights,
                     signals_at_visit={},
@@ -95,12 +98,10 @@ class OutcomeService:
     def _upsert_outcome(
         self,
         *,
-        rep_id: str,
+        rep_id_str: str,
         device_id: Optional[str],
         item: SyncOutcomeItem,
     ) -> tuple[Outcome, bool]:
-        """Returns (outcome, was_duplicate). Raises on failure."""
-        # Idempotency check
         if device_id and item.client_outcome_id:
             existing = (
                 self.db.query(Outcome)
@@ -113,7 +114,6 @@ class OutcomeService:
             if existing:
                 return existing, True
 
-        # Validate entity exists
         entity = (
             self.db.query(FarmerRetailer)
             .filter(FarmerRetailer.id == item.entity_id)
@@ -122,12 +122,11 @@ class OutcomeService:
         if not entity:
             raise ValueError(f"Entity {item.entity_id} not found")
 
-        # Insert
         outcome = Outcome(
             client_outcome_id=item.client_outcome_id,
             device_id=device_id,
             entity_id=item.entity_id,
-            rep_id=rep_id,
+            rep_id=rep_id_str,
             visited_at=item.recorded_at or datetime.utcnow(),
             recorded_at=item.recorded_at or datetime.utcnow(),
             synced_at=datetime.utcnow(),
@@ -142,15 +141,10 @@ class OutcomeService:
         self.db.refresh(outcome)
         return outcome, False
 
-    # ---------- backward-compatible single-outcome path ----------
+    # ---------- legacy single-outcome path ----------
 
-    def record_outcome(self, outcome: OutcomeRecord) -> dict:
-        """Single-outcome submission. Internally routes through sync_outcomes
-        so the idempotency + device-tracking story is identical.
-        Falls back to a synthetic device_id when the legacy client doesn't supply one.
-        """
-        # Synthesize device_id / client_outcome_id for online-only legacy clients
-        device_id = outcome.device_id or f"legacy:{outcome.rep_id}"
+    def record_outcome(self, rep_pk: str, rep_id_str: str, outcome: OutcomeRecord) -> dict:
+        device_id = outcome.device_id or f"legacy:{rep_id_str}"
         client_outcome_id = outcome.client_outcome_id or str(uuid.uuid4())
 
         sync_req = SyncRequest(
@@ -168,24 +162,22 @@ class OutcomeService:
                 recorded_at=outcome.recorded_at,
             )],
         )
-        sync_resp = self.sync_outcomes(outcome.rep_id, sync_req)
+        sync_resp = self.sync_outcomes(rep_pk, rep_id_str, sync_req)
 
         result = sync_resp.results[0]
         success = result.status == "created" and outcome.outcome_rating >= 4
-
-        # Shape the response to match the legacy contract
         acceptance_rate = (
             round(len(outcome.actions_accepted) / len(outcome.actions_taken), 2)
             if outcome.actions_taken else 0.0
         )
 
         return {
-            "status":                       result.status,
-            "outcome_id":                   result.server_outcome_id,
-            "entity_id":                    outcome.entity_id,
-            "outcome_rating":               outcome.outcome_rating,
-            "success":                      success,
+            "status":                        result.status,
+            "outcome_id":                    result.server_outcome_id,
+            "entity_id":                     outcome.entity_id,
+            "outcome_rating":                outcome.outcome_rating,
+            "success":                       success,
             "recommendation_acceptance_rate": acceptance_rate,
-            "client_outcome_id":            client_outcome_id,
-            "device_id":                    device_id,
+            "client_outcome_id":             client_outcome_id,
+            "device_id":                     device_id,
         }
