@@ -8,7 +8,21 @@ from models.db.signal import Signal
 from models.db import outcome, visit
 from core.integrations.weather import fetch_weather_summary
 
-TARGET_REP = "REP_0338"
+# Demo territory — 10 reps spread across 5 states.
+# All 10 get seeded with growers + signals.
+# A subset (see main.py) gets login accounts.
+TARGET_REPS = [
+    "REP_0338",  # Bikaner, Rajasthan  — primary demo rep
+    "REP_0472",  # Sikar, Rajasthan
+    "REP_0373",  # Sikar, Rajasthan
+    "REP_0394",  # Mehsana, Gujarat
+    "REP_0317",  # Jaipur, Rajasthan
+    "REP_0426",  # Meerut, Uttar Pradesh
+    "REP_0325",  # Muzaffarpur, Bihar
+    "REP_0372",  # Kanpur Nagar, Uttar Pradesh
+    "REP_0105",  # Lucknow, Uttar Pradesh
+    "REP_0129",  # Meerut, Uttar Pradesh
+]
 TODAY = date(2026, 5, 15)
 
 PEST_SEVERITY_MAP = {
@@ -29,19 +43,30 @@ CROP_SENSITIVITY_MAP = {
     "safflower":0.6,
 }
 
-# Fallback if Open-Meteo is unreachable at seed time
+# Rough lat/lon for each demo rep's district — used for real weather lookup
+DISTRICT_COORDS = {
+    "Bikaner":       (28.0229, 73.3119),
+    "Sikar":         (27.6094, 75.1399),
+    "Mehsana":       (23.5879, 72.3693),
+    "Jaipur":        (26.9124, 75.7873),
+    "Meerut":        (28.9845, 77.7064),
+    "Muzaffarpur":   (26.1209, 85.3647),
+    "Kanpur Nagar":  (26.4499, 80.3319),
+    "Lucknow":       (26.8467, 80.9462),
+}
+
 WEATHER_FALLBACK_SCORE = 0.5
 
 
 def load_rep_data():
-    tehsil_to_rep = {}
+    """Returns {rep_id: {full row dict including parsed tehsil_list}}"""
     rep_info = {}
     with open("db/data/reps_territory.csv") as f:
         for r in csv.DictReader(f):
+            r["tehsil_list_parsed"] = json.loads(r["tehsil_list"])
             rep_info[r["rep_id"]] = r
-            for t in json.loads(r["tehsil_list"]):
-                tehsil_to_rep[t] = r["rep_id"]
-    return rep_info, tehsil_to_rep
+    return rep_info
+
 
 def load_last_visits():
     last_visit = defaultdict(lambda: date(2025, 10, 1))
@@ -52,13 +77,15 @@ def load_last_visits():
                 last_visit[r["rep_id"]] = d
     return last_visit
 
-def load_growers(rep_tehsils):
+
+def load_growers_for_rep(rep_tehsils):
     growers = []
     with open("db/data/growers.csv") as f:
         for r in csv.DictReader(f):
             if r["tehsil"] in rep_tehsils:
                 growers.append(r)
     return growers
+
 
 def load_tehsil_inventory(rep_tehsils):
     tehsil_retailers = defaultdict(list)
@@ -104,16 +131,19 @@ def load_tehsil_inventory(rep_tehsils):
     return tehsil_inv
 
 
-def fetch_territory_weather():
-    """One real weather call for the whole Bikaner territory. All growers
-    in the territory share this value because they share the weather.
-    """
-    summary = fetch_weather_summary()
+def fetch_weather_for_district(district: str):
+    """One real weather call per district. Falls back gracefully."""
+    coords = DISTRICT_COORDS.get(district)
+    if not coords:
+        return WEATHER_FALLBACK_SCORE, None
+
+    lat, lon = coords
+    summary = fetch_weather_summary(lat=lat, lon=lon)
     if summary is None:
-        print(f"  ⚠ Open-Meteo unreachable — falling back to {WEATHER_FALLBACK_SCORE}")
+        print(f"  ⚠ Open-Meteo unreachable for {district} — falling back to {WEATHER_FALLBACK_SCORE}")
         return WEATHER_FALLBACK_SCORE, None
     print(
-        f"  ✓ Live weather for Bikaner (Open-Meteo): score={summary['score']} "
+        f"  ✓ Weather for {district}: score={summary['score']} "
         f"[precip={summary['components']['total_precipitation_mm_7d']}mm/7d, "
         f"hot_days≥38C={summary['components']['hot_days_above_38c_7d']}, "
         f"peak_wind={summary['components']['peak_wind_kmh_7d']}km/h]"
@@ -121,31 +151,21 @@ def fetch_territory_weather():
     return summary["score"], summary
 
 
-def seed():
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
+def seed_rep(db, rep_id, rep_row, last_visit_date, weather_cache):
+    """Seed growers + signals for one rep. Returns (grower_count, district)."""
+    rep_tehsils = set(rep_row["tehsil_list_parsed"])
+    rep_district = rep_row["district"]
+    rep_state    = rep_row["state"]
+    days_since   = (TODAY - last_visit_date).days
 
-    db.query(Signal).delete()
-    db.query(FarmerRetailer).delete()
-    db.commit()
+    growers    = load_growers_for_rep(rep_tehsils)
+    tehsil_inv = load_tehsil_inventory(rep_tehsils)
 
-    rep_info, tehsil_to_rep = load_rep_data()
-    last_visits = load_last_visits()
-
-    rep_tehsils = set(json.loads(rep_info[TARGET_REP]["tehsil_list"]))
-    rep_district = rep_info[TARGET_REP]["district"]
-    rep_state    = rep_info[TARGET_REP]["state"]
-    days_since   = (TODAY - last_visits[TARGET_REP]).days
-
-    growers      = load_growers(rep_tehsils)
-    tehsil_inv   = load_tehsil_inventory(rep_tehsils)
-
-    print(f"Seeding {len(growers)} growers for {TARGET_REP} ({rep_district}, {rep_state})")
-    print(f"Days since last visit: {days_since}")
-    print(f"Tehsils with real inventory: {len(tehsil_inv)}")
-
-    # Fetch weather ONCE for the whole territory — all growers share it
-    weather_risk_score, weather_summary = fetch_territory_weather()
+    if rep_district in weather_cache:
+        weather_risk_score, weather_summary = weather_cache[rep_district]
+    else:
+        weather_risk_score, weather_summary = fetch_weather_for_district(rep_district)
+        weather_cache[rep_district] = (weather_risk_score, weather_summary)
 
     entities = []
     for g in growers:
@@ -156,10 +176,8 @@ def seed():
             lat=round(random.uniform(27.0, 29.5), 4),
             lng=round(random.uniform(72.0, 74.5), 4),
             region=f"{g['district']}, {g['state']}",
-            rep_id=TARGET_REP,
-            last_visited_at=datetime.combine(
-                last_visits[TARGET_REP], datetime.min.time()
-            ),
+            rep_id=rep_id,
+            last_visited_at=datetime.combine(last_visit_date, datetime.min.time()),
         )
         db.add(entity)
         entities.append((entity, g))
@@ -197,8 +215,9 @@ def seed():
             severity=pest_severity,
             payload={
                 "pest_alert_severity":      pest_severity,
-                "weather_risk_score":       weather_risk_score,           # real, shared across territory
+                "weather_risk_score":       weather_risk_score,
                 "weather_source":           "open-meteo" if weather_summary else "fallback",
+                "weather_district":         rep_district,
                 "weather_components":       weather_summary["components"] if weather_summary else None,
                 "inventory_shortage_level": inventory_shortage,
                 "inventory_pct":            inventory_pct,
@@ -215,8 +234,39 @@ def seed():
         db.add(signal)
 
     db.commit()
+    return len(entities), rep_district
+
+
+def seed():
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+
+    db.query(Signal).delete()
+    db.query(FarmerRetailer).delete()
+    db.commit()
+
+    rep_info = load_rep_data()
+    last_visits = load_last_visits()
+
+    print(f"Seeding {len(TARGET_REPS)} demo reps...")
+    weather_cache = {}
+    total_growers = 0
+    rep_summary = []
+
+    for rep_id in TARGET_REPS:
+        if rep_id not in rep_info:
+            print(f"  ⚠ {rep_id} not in reps_territory.csv — skipping")
+            continue
+
+        rep_row = rep_info[rep_id]
+        last_visit = last_visits[rep_id]
+        count, district = seed_rep(db, rep_id, rep_row, last_visit, weather_cache)
+        total_growers += count
+        rep_summary.append((rep_id, district, count))
+        print(f"  ✓ {rep_id} ({district}): {count} growers")
+
     db.close()
-    print(f"✓ Seeded {len(entities)} growers and {len(entities)} signals for {TARGET_REP}")
+    print(f"✓ Total: {total_growers} growers across {len(rep_summary)} reps")
 
 
 if __name__ == "__main__":
