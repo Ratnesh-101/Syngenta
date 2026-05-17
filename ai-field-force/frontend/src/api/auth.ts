@@ -3,6 +3,7 @@ import {
   MOCK_REP_AUTH,
   MOCK_MANAGER_AUTH,
 } from './mockData';
+import { adaptAuthResponse, adaptRep } from './adapters';
 import type { AuthResponse, OtpSendResponse, Rep } from '../types';
 
 export async function loginWithPassword(identifier: string, password: string): Promise<AuthResponse> {
@@ -12,8 +13,8 @@ export async function loginWithPassword(identifier: string, password: string): P
     if (identifier === 'rep@syngenta.com' || identifier === '9999999999') return MOCK_REP_AUTH;
     throw new Error('Invalid credentials. Use rep@syngenta.com / syngenta123');
   }
-  const { data } = await client.post<AuthResponse>('/auth/login/password', { identifier, password });
-  return data;
+  const { data } = await client.post('/auth/login/password', { identifier, password });
+  return adaptAuthResponse(data);
 }
 
 export async function registerWithPassword(
@@ -23,8 +24,8 @@ export async function registerWithPassword(
     await mockDelay(null);
     return { ...MOCK_REP_AUTH, rep: { ...MOCK_REP_AUTH.rep, name, email, phone } };
   }
-  const { data } = await client.post<AuthResponse>('/auth/register/password', { name, email, phone, password });
-  return data;
+  const { data } = await client.post('/auth/register/password', { name, email, phone, password });
+  return adaptAuthResponse(data);
 }
 
 export async function sendOtp(phone: string): Promise<OtpSendResponse> {
@@ -32,8 +33,8 @@ export async function sendOtp(phone: string): Promise<OtpSendResponse> {
     await mockDelay(null, 600);
     return { message: 'OTP sent', dev_otp: '123456' };
   }
-  const { data } = await client.post<OtpSendResponse>('/auth/otp/send', { phone });
-  return data;
+  const { data } = await client.post<{ dev_otp?: string }>('/auth/otp/send', { phone });
+  return { message: 'OTP sent', dev_otp: data.dev_otp };
 }
 
 export async function verifyOtp(phone: string, code: string): Promise<AuthResponse> {
@@ -42,8 +43,8 @@ export async function verifyOtp(phone: string, code: string): Promise<AuthRespon
     if (code !== '123456') throw new Error('Invalid OTP. Use 123456 in demo mode.');
     return MOCK_REP_AUTH;
   }
-  const { data } = await client.post<AuthResponse>('/auth/otp/verify', { phone, code });
-  return data;
+  const { data } = await client.post('/auth/otp/verify', { phone, code });
+  return adaptAuthResponse(data);
 }
 
 export async function loginWithGoogle(id_token: string): Promise<AuthResponse> {
@@ -51,8 +52,8 @@ export async function loginWithGoogle(id_token: string): Promise<AuthResponse> {
     await mockDelay(null);
     return MOCK_REP_AUTH;
   }
-  const { data } = await client.post<AuthResponse>('/auth/google/verify', { id_token });
-  return data;
+  const { data } = await client.post('/auth/google/verify', { id_token });
+  return adaptAuthResponse(data);
 }
 
 export async function getMe(): Promise<Rep> {
@@ -63,8 +64,8 @@ export async function getMe(): Promise<Rep> {
     throw new Error('Not authenticated');
   }
   try {
-    const { data } = await client.get<Rep>('/auth/me');
-    return data;
+    const { data } = await client.get('/auth/me');
+    return adaptRep(data);
   } catch (err) {
     throw new Error(getErrorMessage(err));
   }
