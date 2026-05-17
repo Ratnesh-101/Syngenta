@@ -16,7 +16,7 @@ const OUTCOME_LABELS: Record<OutcomeType, string> = {
   sale: 'Sale Completed',
   follow_up_needed: 'Follow-up Needed',
   no_interest: 'No Interest',
-  complaint: 'Complaint Raised',
+  complaint_resolved: 'Complaint Resolved',
 };
 
 interface FormValues {
@@ -128,7 +128,7 @@ export default function OutcomeForm({ entityName, onSubmit, onCancel }: Props) {
                 outcomeType === type
                   ? type === 'sale'
                     ? 'bg-forest-700 border-forest-700 text-white'
-                    : type === 'complaint'
+                    : type === 'complaint_resolved'
                     ? 'bg-clay-600 border-clay-600 text-white'
                     : 'bg-forest-50 border-forest-400 text-forest-800'
                   : 'bg-white border-sage-200 text-sage-600 hover:bg-sage-50'
