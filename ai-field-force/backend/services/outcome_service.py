@@ -15,21 +15,21 @@ from models.schemas.outcome import (
     SyncResultItem,
 )
 from services.device_service import DeviceService
+from services.weight_service import WeightService
 from core.ml.weight_updater import update_weights
-from core.ml.weights import SIGNAL_WEIGHTS
 
 
 class OutcomeService:
     """All outcome paths funnel through sync_outcomes() — it handles idempotency,
-    device tracking, and weight updates in one place.
+    device tracking, weight updates, AND weight-history snapshots.
 
-    Identifier conventions in this service:
+    Identifier conventions:
       - rep_pk     : Rep.id (uuid) — used for Device foreign keys
       - rep_id_str : Rep.rep_id (e.g. 'REP_0338') — used for business filtering
-        (which Syngenta territory this outcome belongs to)
     """
     def __init__(self, db: Session):
         self.db = db
+        self.weight_svc = WeightService(db)
 
     # ---------- batch sync (primary entrypoint) ----------
 
@@ -44,7 +44,9 @@ class OutcomeService:
 
         results: list[SyncResultItem] = []
         created = duplicate = failed = 0
-        last_weights = SIGNAL_WEIGHTS
+
+        # Each newly-created outcome updates the cumulative weights AND writes a snapshot
+        running_weights = self.weight_svc.get_current_weights()
 
         for item in payload.outcomes:
             try:
@@ -62,11 +64,19 @@ class OutcomeService:
                     ))
                     continue
 
-                last_weights = update_weights(
-                    current_weights=last_weights,
+                # Apply Bayesian update and persist as a snapshot tagged to this outcome
+                running_weights = update_weights(
+                    current_weights=running_weights,
                     signals_at_visit={},
                     outcome_rating=item.outcome_rating,
                 )
+                self.weight_svc.record_snapshot(
+                    weights=running_weights,
+                    trigger="outcome_logged",
+                    rep_id=rep_id_str,
+                    outcome_id=outcome.id,
+                )
+
                 created += 1
                 results.append(SyncResultItem(
                     client_outcome_id=item.client_outcome_id,
