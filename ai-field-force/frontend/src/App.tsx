@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { ThemeProvider } from './context/ThemeContext'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -25,7 +26,7 @@ function RoleRedirect() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-forest-50 flex items-center justify-center">
+      <div className="min-h-screen bg-forest-50 dark:bg-forest-950 flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-forest-700 border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -38,36 +39,38 @@ function RoleRedirect() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          {/* Root redirect */}
-          <Route path="/" element={<RoleRedirect />} />
+    <ThemeProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <Routes>
+            {/* Root redirect */}
+            <Route path="/" element={<RoleRedirect />} />
 
-          {/* Public */}
-          <Route path="/login"    element={<Login />} />
-          <Route path="/register" element={<Register />} />
+            {/* Public */}
+            <Route path="/login"    element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-          {/* Rep routes */}
-          <Route element={<ProtectedRoute requiredRole="rep" />}>
-            <Route path="/today"              element={<Today />} />
-            <Route path="/grower/:entity_id"  element={<GrowerDetail />} />
-            <Route path="/anomalies"          element={<Anomalies />} />
-            <Route path="/devices"            element={<Devices />} />
-          </Route>
+            {/* Rep routes */}
+            <Route element={<ProtectedRoute requiredRole="rep" />}>
+              <Route path="/today"              element={<Today />} />
+              <Route path="/grower/:entity_id"  element={<GrowerDetail />} />
+              <Route path="/anomalies"          element={<Anomalies />} />
+              <Route path="/devices"            element={<Devices />} />
+            </Route>
 
-          {/* Manager routes */}
-          <Route element={<ProtectedRoute requiredRole="manager" />}>
-            <Route path="/manager"                    element={<Overview />} />
-            <Route path="/manager/reps"               element={<Reps />} />
-            <Route path="/manager/reps/:rep_id"       element={<RepDetail />} />
-            <Route path="/manager/weights"            element={<WeightsHistory />} />
-          </Route>
+            {/* Manager routes */}
+            <Route element={<ProtectedRoute requiredRole="manager" />}>
+              <Route path="/manager"                    element={<Overview />} />
+              <Route path="/manager/reps"               element={<Reps />} />
+              <Route path="/manager/reps/:rep_id"       element={<RepDetail />} />
+              <Route path="/manager/weights"            element={<WeightsHistory />} />
+            </Route>
 
-          {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+            {/* Catch-all */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   )
 }

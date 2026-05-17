@@ -1,4 +1,4 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -120,4 +120,45 @@
 input[type="submit"],
 button {
   -webkit-appearance: none;
+}
+
+/* Dark mode overrides */
+.dark body {
+  background-color: #0e1f17;
+  color: #e6eeea;
+}
+
+.dark .card,
+.dark .card-hover {
+  background-color: #132b1e;
+  border-color: #1e4730;
+}
+
+.dark .card-hover:hover {
+  background-color: #1a3828;
+}
+
+.dark .input-field {
+  background-color: #132b1e;
+  border-color: #2d5c40;
+  color: #e6eeea;
+}
+
+.dark header {
+  background-color: #0e1f17;
+  border-color: #1e4730;
+}
+
+.dark .btn-secondary {
+  background-color: #132b1e;
+  border-color: #2d5c40;
+  color: #a6c4b5;
+}
+
+.dark .btn-ghost {
+  color: #a6c4b5;
+}
+
+.dark .btn-ghost:hover {
+  background-color: #1a3828;
 }
