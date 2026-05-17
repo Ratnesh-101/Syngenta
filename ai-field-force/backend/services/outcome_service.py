@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from models.db.outcome import Outcome
 from models.db.farmers import FarmerRetailer
+from models.db.signal import Signal
 from models.schemas.outcome import (
     OutcomeRecord,
     SyncRequest,
@@ -19,9 +20,51 @@ from services.weight_service import WeightService
 from core.ml.weight_updater import update_weights
 
 
+# Signal keys that the weight updater understands. Boolean/string signals
+# are converted to numeric before being fed in (the updater multiplies them).
+_NUMERIC_SIGNAL_KEYS = {
+    "pest_alert_severity",      # string -> 0/0.33/0.66/1.0
+    "inventory_shortage_level", # already 0.0-1.0
+    "days_since_last_visit",    # int days -> normalized 0-1 (capped at 90 days)
+    "weather_risk_score",       # already 0.0-1.0
+    "complaint_open",           # bool -> 0/1
+    "crop_stage_sensitivity",   # already 0.0-1.0
+    "revenue_potential",        # 0-100000 -> normalized 0-1
+    "competitor_activity",      # bool -> 0/1
+}
+
+_PEST_SEVERITY_NUMERIC = {
+    "none": 0.0, "low": 0.33, "medium": 0.66, "high": 1.0,
+}
+
+
+def _normalize_signal_payload(payload: dict) -> dict:
+    """Convert the raw Signal.payload dict into numeric values the updater
+    can multiply against weights. Anything missing or odd → 0.0.
+    """
+    if not payload:
+        return {k: 0.0 for k in _NUMERIC_SIGNAL_KEYS}
+
+    out = {}
+    out["pest_alert_severity"] = _PEST_SEVERITY_NUMERIC.get(
+        str(payload.get("pest_alert_severity") or "none").lower(), 0.0
+    )
+    out["inventory_shortage_level"] = float(payload.get("inventory_shortage_level") or 0.0)
+    days = int(payload.get("days_since_last_visit") or 0)
+    out["days_since_last_visit"] = min(1.0, days / 90.0)  # 90+ days → max
+    out["weather_risk_score"] = float(payload.get("weather_risk_score") or 0.0)
+    out["complaint_open"] = 1.0 if payload.get("complaint_open") else 0.0
+    out["crop_stage_sensitivity"] = float(payload.get("crop_stage_sensitivity") or 0.0)
+    rev = float(payload.get("revenue_potential") or 0.0)
+    out["revenue_potential"] = min(1.0, rev / 100000.0)
+    out["competitor_activity"] = 1.0 if payload.get("competitor_activity") else 0.0
+    return out
+
+
 class OutcomeService:
     """All outcome paths funnel through sync_outcomes() — it handles idempotency,
-    device tracking, weight updates, AND weight-history snapshots.
+    device tracking, weight updates (with real signal context), AND weight
+    history snapshots.
 
     Identifier conventions:
       - rep_pk     : Rep.id (uuid) — used for Device foreign keys
@@ -31,7 +74,20 @@ class OutcomeService:
         self.db = db
         self.weight_svc = WeightService(db)
 
-    # ---------- batch sync (primary entrypoint) ----------
+    def _load_signals_at_visit(self, entity_id: str) -> tuple[dict, dict]:
+        """Returns (raw_payload, normalized_numeric_payload) for the given entity.
+        Raw is stored on the Outcome row for the demo; normalized is fed to the updater.
+        """
+        sig = (
+            self.db.query(Signal)
+            .filter(Signal.entity_id == entity_id)
+            .order_by(Signal.created_at.desc())
+            .first()
+        )
+        raw = sig.payload if sig and sig.payload else {}
+        return raw, _normalize_signal_payload(raw)
+
+    # ---------- batch sync ----------
 
     def sync_outcomes(self, rep_pk: str, rep_id_str: str, payload: SyncRequest) -> SyncResponse:
         device_svc = DeviceService(self.db)
@@ -45,15 +101,17 @@ class OutcomeService:
         results: list[SyncResultItem] = []
         created = duplicate = failed = 0
 
-        # Each newly-created outcome updates the cumulative weights AND writes a snapshot
         running_weights = self.weight_svc.get_current_weights()
 
         for item in payload.outcomes:
             try:
+                raw_signals, numeric_signals = self._load_signals_at_visit(item.entity_id)
+
                 outcome, was_duplicate = self._upsert_outcome(
                     rep_id_str=rep_id_str,
                     device_id=device.id,
                     item=item,
+                    raw_signals_snapshot=raw_signals,
                 )
                 if was_duplicate:
                     duplicate += 1
@@ -64,10 +122,10 @@ class OutcomeService:
                     ))
                     continue
 
-                # Apply Bayesian update and persist as a snapshot tagged to this outcome
+                # REAL weight update — uses the signals that were active at this entity
                 running_weights = update_weights(
                     current_weights=running_weights,
-                    signals_at_visit={},
+                    signals_at_visit=numeric_signals,
                     outcome_rating=item.outcome_rating,
                 )
                 self.weight_svc.record_snapshot(
@@ -111,6 +169,7 @@ class OutcomeService:
         rep_id_str: str,
         device_id: Optional[str],
         item: SyncOutcomeItem,
+        raw_signals_snapshot: dict,
     ) -> tuple[Outcome, bool]:
         if device_id and item.client_outcome_id:
             existing = (
@@ -144,7 +203,7 @@ class OutcomeService:
             outcome_type=item.outcome_type,
             actions_taken=item.actions_taken + item.actions_accepted,
             notes=item.notes,
-            signals_at_visit={},
+            signals_at_visit=raw_signals_snapshot,  # captured for audit / demo
         )
         self.db.add(outcome)
         self.db.commit()
