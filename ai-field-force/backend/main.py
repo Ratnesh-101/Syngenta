@@ -22,23 +22,21 @@ from models.db.weight_history import WeightHistory
 from services.auth_service import AuthService
 from db.seed_demo_outcomes import seed_demo_outcomes
 
-app = FastAPI(title="Field Force Copilot", version="0.7.0")
+app = FastAPI(title="Field Force Copilot", version="0.8.0")
 
 # ---------- CORS ----------
-# Lets browser-based frontends at common local ports talk to this API.
-# Production would restrict origins to the actual deployed frontend domain.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",   # Create React App default
-        "http://localhost:5173",   # Vite default
-        "http://localhost:5174",   # Vite secondary
-        "http://localhost:4173",   # Vite preview
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:4173",
         "http://localhost:8080",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:8080",
-        "null",                    # file:// origin — for the local HTML demo client
+        "null",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -47,8 +45,27 @@ app.add_middleware(
 )
 
 
+# ---------- Demo rep accounts ----------
+# Order matters: index 0 = the "primary" demo rep used in the demo script.
+# Each entry is (email, password, rep_id, name)
+DEMO_LOGIN_REPS = [
+    ("rep@syngenta.com",  "syngenta123", "REP_0338", "Demo Rep"),
+    ("rep2@syngenta.com", "syngenta123", "REP_0472", "Sikar Rep"),
+    ("rep3@syngenta.com", "syngenta123", "REP_0394", "Mehsana Rep"),
+    ("rep4@syngenta.com", "syngenta123", "REP_0426", "Meerut Rep"),
+]
+
+# All 10 reps the manager oversees (must match db/seed_data.py:TARGET_REPS)
+MANAGER_REP_IDS = [
+    "REP_0338", "REP_0472", "REP_0373", "REP_0394", "REP_0317",
+    "REP_0426", "REP_0325", "REP_0372", "REP_0105", "REP_0129",
+]
+
+
 @app.on_event("startup")
 def startup():
+    # Wipe + recreate the tables we own. Signals / farmers / visits are NOT
+    # dropped — they're populated by db.seed_data (run separately).
     WeightHistory.__table__.drop(bind=engine, checkfirst=True)
     Outcome.__table__.drop(bind=engine, checkfirst=True)
     Device.__table__.drop(bind=engine, checkfirst=True)
@@ -62,18 +79,26 @@ def startup():
     try:
         svc = AuthService()
 
-        svc.ensure_seed_rep(
-            db,
-            rep_id="REP_0338",
-            name="Demo Rep",
-            email="rep@syngenta.com",
-            phone="9999999999",
-            password="syngenta123",
-            role="rep",
-            managed_rep_ids=[],
-        )
-        print("✓ Demo rep ensured (rep@syngenta.com / 9999999999 / syngenta123)")
+        # ---------- Seed rep accounts ----------
+        for email, password, rep_id, name in DEMO_LOGIN_REPS:
+            # Each rep account links to its own Syngenta rep_id
+            phone = "9999999999" if rep_id == "REP_0338" else None
+            svc.ensure_seed_rep(
+                db,
+                rep_id=rep_id,
+                name=name,
+                email=email,
+                phone=phone,
+                password=password,
+                role="rep",
+                managed_rep_ids=[],
+            )
+        print(f"✓ {len(DEMO_LOGIN_REPS)} demo rep accounts ensured")
+        print(f"   Primary: rep@syngenta.com / syngenta123 (REP_0338, also phone 9999999999)")
+        for email, _, rep_id, _ in DEMO_LOGIN_REPS[1:]:
+            print(f"   Also:    {email} / syngenta123 ({rep_id})")
 
+        # ---------- Seed manager account ----------
         svc.ensure_seed_rep(
             db,
             rep_id=None,
@@ -82,10 +107,12 @@ def startup():
             phone=None,
             password="manager123",
             role="manager",
-            managed_rep_ids=["REP_0338"],
+            managed_rep_ids=MANAGER_REP_IDS,
         )
-        print("✓ Demo manager ensured (manager@syngenta.com / manager123, manages [REP_0338])")
+        print(f"✓ Demo manager ensured (manager@syngenta.com / manager123)")
+        print(f"   Manages {len(MANAGER_REP_IDS)} reps across 5+ states")
 
+        # ---------- Seed demo outcomes ----------
         seed_result = seed_demo_outcomes(db)
         print(f"✓ Demo outcomes seeded: created={seed_result['created']}, skipped={seed_result['skipped']}")
     finally:
@@ -105,4 +132,4 @@ app.include_router(manager.router,  prefix="/manager",  tags=["Manager"])
 
 @app.get("/")
 def root():
-    return {"status": "ok", "project": "Field Force Copilot", "version": "0.7.0"}
+    return {"status": "ok", "project": "Field Force Copilot", "version": "0.8.0"}
