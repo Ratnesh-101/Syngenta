@@ -5,18 +5,24 @@ import {
   MOCK_REP_DETAILS,
   MOCK_TOP_PRIORITIES,
 } from './mockData';
+import {
+  adaptManagerOverview,
+  adaptRepMetrics,
+  adaptRepDetails,
+  adaptTopPriority,
+} from './adapters';
 import type { ManagerOverview, RepMetrics, RepDetails, TopPriority } from '../types';
 
 export async function getManagerOverview(): Promise<ManagerOverview> {
   if (MOCK_MODE) return mockDelay(MOCK_OVERVIEW);
-  const { data } = await client.get<ManagerOverview>('/manager/overview');
-  return data;
+  const { data } = await client.get('/manager/overview');
+  return adaptManagerOverview(data);
 }
 
 export async function getManagerReps(): Promise<RepMetrics[]> {
   if (MOCK_MODE) return mockDelay(MOCK_REPS);
-  const { data } = await client.get<RepMetrics[]>('/manager/reps');
-  return data;
+  const { data } = await client.get<unknown[]>('/manager/reps');
+  return data.map((r) => adaptRepMetrics(r as Parameters<typeof adaptRepMetrics>[0]));
 }
 
 export async function getRepDetails(rep_id: string): Promise<RepDetails> {
@@ -26,12 +32,24 @@ export async function getRepDetails(rep_id: string): Promise<RepDetails> {
     if (!detail) throw new Error('Rep not found');
     return detail;
   }
-  const { data } = await client.get<RepDetails>(`/manager/reps/${rep_id}/details`);
-  return data;
+
+  // Fetch the metrics row alongside details so the screen has a populated rep card.
+  // Real backend: /manager/reps/{id}/details doesn't include metrics, and
+  // /manager/reps returns all of them.
+  const [detailsRes, metricsRes] = await Promise.all([
+    client.get(`/manager/reps/${rep_id}/details`),
+    client.get<unknown[]>('/manager/reps').catch(() => ({ data: [] as unknown[] })),
+  ]);
+
+  const matching = (metricsRes.data as unknown[])
+    .map((r) => adaptRepMetrics(r as Parameters<typeof adaptRepMetrics>[0]))
+    .find((r) => r.rep_id === rep_id);
+
+  return adaptRepDetails(detailsRes.data, matching);
 }
 
 export async function getTopPriorities(limit = 10): Promise<TopPriority[]> {
   if (MOCK_MODE) return mockDelay(MOCK_TOP_PRIORITIES.slice(0, limit));
-  const { data } = await client.get<TopPriority[]>(`/manager/priorities/top?limit=${limit}`);
-  return data;
+  const { data } = await client.get<unknown[]>(`/manager/priorities/top?limit=${limit}`);
+  return data.map((t) => adaptTopPriority(t as Parameters<typeof adaptTopPriority>[0]));
 }
