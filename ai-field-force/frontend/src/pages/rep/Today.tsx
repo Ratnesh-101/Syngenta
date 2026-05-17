@@ -26,10 +26,10 @@ export default function Today() {
 
   return (
     <Layout>
-      {/* Page header */}
-      <div className="mb-5">
+      {/* Page header — slightly larger heading on desktop */}
+      <div className="mb-5 md:mb-8">
         <p className="text-xs font-semibold text-sage-500 uppercase tracking-widest mb-1">{todayStr}</p>
-        <h1 className="page-header">Good morning, {rep?.name?.split(' ')[0]}.</h1>
+        <h1 className="page-header md:text-3xl">Good morning, {rep?.name?.split(' ')[0]}.</h1>
         <p className="text-sm text-sage-500 mt-1">
           {growers.length > 0
             ? `${growers.length} growers ranked by visit priority score`
@@ -39,32 +39,32 @@ export default function Today() {
         </p>
       </div>
 
-      {/* Summary strip */}
+      {/* Summary strip — wider gaps + bigger numbers on desktop */}
       {!loading && growers.length > 0 && (
-        <div className="flex gap-3 mb-5">
-          <div className="flex-1 card px-4 py-3 bg-clay-50 border-clay-100">
+        <div className="flex gap-3 md:gap-4 mb-5 md:mb-8">
+          <div className="flex-1 card px-4 py-3 md:py-5 bg-clay-50 border-clay-100">
             <p className="text-xs text-clay-600 font-semibold uppercase tracking-wide">High Priority</p>
-            <p className="text-xl font-bold font-display text-clay-700">
+            <p className="text-xl md:text-3xl font-bold font-display text-clay-700">
               {growers.filter((g) => g.vps_score >= 80).length}
             </p>
           </div>
-          <div className="flex-1 card px-4 py-3 bg-harvest-50 border-harvest-100">
+          <div className="flex-1 card px-4 py-3 md:py-5 bg-harvest-50 border-harvest-100">
             <p className="text-xs text-harvest-600 font-semibold uppercase tracking-wide">Alerts</p>
-            <p className="text-xl font-bold font-display text-harvest-700">
+            <p className="text-xl md:text-3xl font-bold font-display text-harvest-700">
               {growers.reduce((s, g) => s + g.anomaly_count, 0)}
             </p>
           </div>
-          <div className="flex-1 card px-4 py-3 bg-forest-50 border-forest-100">
+          <div className="flex-1 card px-4 py-3 md:py-5 bg-forest-50 border-forest-100">
             <p className="text-xs text-forest-600 font-semibold uppercase tracking-wide">Total</p>
-            <p className="text-xl font-bold font-display text-forest-700">{growers.length}</p>
+            <p className="text-xl md:text-3xl font-bold font-display text-forest-700">{growers.length}</p>
           </div>
         </div>
       )}
 
-      {/* Loading skeleton */}
+      {/* Loading skeleton — also responsive grid */}
       {loading && (
-        <div className="space-y-3">
-          {[...Array(5)].map((_, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+          {[...Array(6)].map((_, i) => (
             <div key={i} className="card p-4 animate-pulse">
               <div className="flex gap-4">
                 <div className="w-10 h-10 rounded-xl bg-sage-100" />
@@ -99,9 +99,9 @@ export default function Today() {
         </div>
       )}
 
-      {/* Priority list */}
+      {/* Priority list — 1 col mobile, 2 col desktop */}
       {!loading && !error && growers.length > 0 && (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
           {growers.map((grower) => (
             <PriorityCard key={grower.entity_id} grower={grower} />
           ))}
