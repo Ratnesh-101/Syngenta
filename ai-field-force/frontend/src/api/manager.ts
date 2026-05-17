@@ -33,9 +33,6 @@ export async function getRepDetails(rep_id: string): Promise<RepDetails> {
     return detail;
   }
 
-  // Fetch the metrics row alongside details so the screen has a populated rep card.
-  // Real backend: /manager/reps/{id}/details doesn't include metrics, and
-  // /manager/reps returns all of them.
   const [detailsRes, metricsRes] = await Promise.all([
     client.get(`/manager/reps/${rep_id}/details`),
     client.get<unknown[]>('/manager/reps').catch(() => ({ data: [] as unknown[] })),
@@ -52,4 +49,21 @@ export async function getTopPriorities(limit = 10): Promise<TopPriority[]> {
   if (MOCK_MODE) return mockDelay(MOCK_TOP_PRIORITIES.slice(0, limit));
   const { data } = await client.get<unknown[]>(`/manager/priorities/top?limit=${limit}`);
   return data.map((t) => adaptTopPriority(t as Parameters<typeof adaptTopPriority>[0]));
+}
+
+// ─── Weights ──────────────────────────────────────────────────────────────────
+
+export interface WeightsSnapshot {
+  id: number;
+  rep_id: string;
+  trigger: string;
+  outcome_id: number | null;
+  weights: Record<string, number>;
+  delta: Record<string, number> | null;
+  created_at: string;
+}
+
+export async function getWeightsHistory(limit = 20): Promise<WeightsSnapshot[]> {
+  const { data } = await client.get<WeightsSnapshot[]>(`/weights/history?limit=${limit}`);
+  return data;
 }
