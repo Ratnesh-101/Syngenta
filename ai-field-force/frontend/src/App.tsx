@@ -17,6 +17,7 @@ import Devices from './pages/rep/Devices'
 import Overview from './pages/manager/Overview'
 import Reps from './pages/manager/Reps'
 import RepDetail from './pages/manager/RepDetail'
+import WeightsHistory from './pages/manager/WeightsHistory'
 
 /** Redirects to the correct home based on role */
 function RoleRedirect() {
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="/manager"                    element={<Overview />} />
             <Route path="/manager/reps"               element={<Reps />} />
             <Route path="/manager/reps/:rep_id"       element={<RepDetail />} />
+            <Route path="/manager/weights"            element={<WeightsHistory />} />
           </Route>
 
           {/* Catch-all */}

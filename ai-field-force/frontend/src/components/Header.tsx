@@ -50,6 +50,7 @@ export default function Header({ title, showBack }: HeaderProps) {
                   <>
                     <Link to="/manager" className="btn-ghost text-xs py-1.5 px-3">Overview</Link>
                     <Link to="/manager/reps" className="btn-ghost text-xs py-1.5 px-3">Reps</Link>
+                    <Link to="/manager/weights" className="btn-ghost text-xs py-1.5 px-3">Learning Trail</Link>
                   </>
                 ) : (
                   <>
