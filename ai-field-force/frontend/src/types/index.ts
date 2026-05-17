@@ -44,8 +44,7 @@ export interface GrowerBrief {
 
 // ─── Outcomes ────────────────────────────────────────────────────────────────
 
-export type OutcomeType = 'sale' | 'follow_up_needed' | 'no_interest' | 'complaint';
-
+export type OutcomeType = 'sale' | 'follow_up_needed' | 'no_interest' | 'complaint_resolved';
 export interface OutcomeRecord {
   client_outcome_id: string;
   entity_id: string;
