@@ -3,12 +3,10 @@ import { useMemo } from 'react';
 const DEVICE_KEY = 'field_force_device_id';
 const DEVICE_NAME_KEY = 'field_force_device_name';
 
-function detectPlatform(): string {
+function detectPlatform(): 'android' | 'ios' | 'web' {
   const ua = navigator.userAgent;
   if (/android/i.test(ua)) return 'android';
   if (/iphone|ipad|ipod/i.test(ua)) return 'ios';
-  if (/win/i.test(ua)) return 'windows';
-  if (/mac/i.test(ua)) return 'macos';
   return 'web';
 }
 
@@ -16,11 +14,9 @@ function generateDeviceName(platform: string): string {
   const names: Record<string, string> = {
     android: 'Android Phone',
     ios: 'iPhone',
-    windows: 'Windows PC',
-    macos: 'Mac',
     web: 'Web Browser',
   };
-  return names[platform] ?? 'Unknown Device';
+  return names[platform] ?? 'Web Browser';
 }
 
 export function useDevice() {
