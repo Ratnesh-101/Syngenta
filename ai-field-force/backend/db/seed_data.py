@@ -6,6 +6,7 @@ from db.session import SessionLocal, engine, Base
 from models.db.farmers import FarmerRetailer
 from models.db.signal import Signal
 from models.db import outcome, visit
+from core.integrations.weather import fetch_weather_summary
 
 TARGET_REP = "REP_0338"
 TODAY = date(2026, 5, 15)
@@ -27,6 +28,10 @@ CROP_SENSITIVITY_MAP = {
     "lentil":   0.4,
     "safflower":0.6,
 }
+
+# Fallback if Open-Meteo is unreachable at seed time
+WEATHER_FALLBACK_SCORE = 0.5
+
 
 def load_rep_data():
     tehsil_to_rep = {}
@@ -56,7 +61,6 @@ def load_growers(rep_tehsils):
     return growers
 
 def load_tehsil_inventory(rep_tehsils):
-    # Step 1: tehsil -> retailer_ids
     tehsil_retailers = defaultdict(list)
     with open("db/data/retailers.csv") as f:
         for r in csv.DictReader(f):
@@ -67,7 +71,6 @@ def load_tehsil_inventory(rep_tehsils):
         rid for retailers in tehsil_retailers.values() for rid in retailers
     )
 
-    # Step 2: load inventory for these retailers
     retailer_inventory = defaultdict(list)
     with open("db/data/retailer_inventory_weekly.csv") as f:
         for r in csv.DictReader(f):
@@ -77,14 +80,12 @@ def load_tehsil_inventory(rep_tehsils):
     if not retailer_inventory:
         return {}
 
-    # Step 3: latest week
     latest_week = max(
         r["week_end_date"]
         for rows in retailer_inventory.values()
         for r in rows
     )
 
-    # Step 4: compute per-tehsil inventory_pct
     tehsil_inv = {}
     for tehsil, retailers in tehsil_retailers.items():
         all_qtys = []
@@ -101,6 +102,24 @@ def load_tehsil_inventory(rep_tehsils):
             }
 
     return tehsil_inv
+
+
+def fetch_territory_weather():
+    """One real weather call for the whole Bikaner territory. All growers
+    in the territory share this value because they share the weather.
+    """
+    summary = fetch_weather_summary()
+    if summary is None:
+        print(f"  ⚠ Open-Meteo unreachable — falling back to {WEATHER_FALLBACK_SCORE}")
+        return WEATHER_FALLBACK_SCORE, None
+    print(
+        f"  ✓ Live weather for Bikaner (Open-Meteo): score={summary['score']} "
+        f"[precip={summary['components']['total_precipitation_mm_7d']}mm/7d, "
+        f"hot_days≥38C={summary['components']['hot_days_above_38c_7d']}, "
+        f"peak_wind={summary['components']['peak_wind_kmh_7d']}km/h]"
+    )
+    return summary["score"], summary
+
 
 def seed():
     Base.metadata.create_all(bind=engine)
@@ -125,6 +144,9 @@ def seed():
     print(f"Days since last visit: {days_since}")
     print(f"Tehsils with real inventory: {len(tehsil_inv)}")
 
+    # Fetch weather ONCE for the whole territory — all growers share it
+    weather_risk_score, weather_summary = fetch_territory_weather()
+
     entities = []
     for g in growers:
         entity = FarmerRetailer(
@@ -145,7 +167,6 @@ def seed():
     db.commit()
 
     for entity, g in entities:
-        # Crop calendar
         try:
             cal   = json.loads(g["grower_crop_calendar"])
             crop  = cal.get("crop", "wheat")
@@ -158,16 +179,13 @@ def seed():
         pest_severity    = PEST_SEVERITY_MAP.get(crop, "low")
         crop_sensitivity = CROP_SENSITIVITY_MAP.get(crop, 0.5)
 
-        # Real inventory from tehsil
         inv = tehsil_inv.get(g["tehsil"], {})
         inventory_pct      = inv.get("inventory_pct", 0.5)
         inventory_shortage = inv.get("inventory_shortage_level", 0.5)
 
-        # Revenue from farm size
         farm_size = float(g.get("grower_farm_size") or 1.0)
         revenue_potential = min(100000.0, farm_size * 12000)
 
-        # Engagement signals
         product_scanned    = g.get("product_scan", "false").lower() == "true"
         campaign_attended  = g.get("offline_campaign_attended", "false").lower() == "true"
         competitor_activity = not product_scanned and not campaign_attended
@@ -179,16 +197,18 @@ def seed():
             severity=pest_severity,
             payload={
                 "pest_alert_severity":      pest_severity,
-                "weather_risk_score":       round(random.uniform(0.3, 0.9), 2),
+                "weather_risk_score":       weather_risk_score,           # real, shared across territory
+                "weather_source":           "open-meteo" if weather_summary else "fallback",
+                "weather_components":       weather_summary["components"] if weather_summary else None,
                 "inventory_shortage_level": inventory_shortage,
                 "inventory_pct":            inventory_pct,
-                "crop_stage":              crop,
-                "crop_stage_sensitivity":  crop_sensitivity,
-                "competitor_activity":     competitor_activity,
-                "complaint_open":          not campaign_attended and random.random() < 0.3,
-                "revenue_potential":       round(revenue_potential, 2),
-                "max_ltv":                 100000.0,
-                "days_since_last_visit":   days_since,
+                "crop_stage":               crop,
+                "crop_stage_sensitivity":   crop_sensitivity,
+                "competitor_activity":      competitor_activity,
+                "complaint_open":           not campaign_attended and random.random() < 0.3,
+                "revenue_potential":        round(revenue_potential, 2),
+                "max_ltv":                  100000.0,
+                "days_since_last_visit":    days_since,
             },
             created_at=datetime.utcnow(),
         )
@@ -197,6 +217,7 @@ def seed():
     db.commit()
     db.close()
     print(f"✓ Seeded {len(entities)} growers and {len(entities)} signals for {TARGET_REP}")
+
 
 if __name__ == "__main__":
     seed()
