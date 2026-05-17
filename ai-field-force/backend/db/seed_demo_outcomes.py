@@ -2,10 +2,8 @@
 """
 Idempotent demo outcome seeder. Populates ~8 realistic outcomes against the
 demo rep's territory AND records the corresponding WeightHistory snapshots
-so the manager dashboard's 'learning over time' story is visible.
-
-Safe to call on every startup — uses sentinel client_outcome_id values so
-re-running won't duplicate.
+with REAL signal context so the manager dashboard's 'learning over time'
+story is genuinely visible.
 """
 from datetime import datetime, timedelta
 
@@ -14,14 +12,16 @@ from sqlalchemy.orm import Session
 from models.db.outcome import Outcome
 from models.db.device import Device
 from models.db.farmers import FarmerRetailer
+from models.db.signal import Signal
 from models.db.weight_history import WeightHistory
 from core.ml.weight_updater import update_weights
 from core.ml.weights import SIGNAL_WEIGHTS
+# Reuse the same normalizer the live path uses, so seeded data is consistent
+from services.outcome_service import _normalize_signal_payload
 
 DEMO_REP_ID = "REP_0338"
 DEMO_DEVICE_ID = "demo-seed-device"
 
-# (entity_id, days_ago, rating, type, actions, notes)
 _DEMO_OUTCOMES = [
     ("GRW_00774", 12, 5, "sale",              ["product_demo", "fungicide_recommended"], "Closed deal on fungicide pack. Grower receptive."),
     ("GRW_02680", 10, 4, "complaint_resolved", ["site_visit", "expert_consultation"],     "Addressed earlier complaint about pest control. Grower satisfied."),
@@ -42,6 +42,17 @@ def _compute_delta(new: dict, old: dict) -> dict:
     return {k: v for k, v in delta.items() if abs(v) > 1e-9}
 
 
+def _signals_for(db: Session, entity_id: str) -> tuple[dict, dict]:
+    sig = (
+        db.query(Signal)
+        .filter(Signal.entity_id == entity_id)
+        .order_by(Signal.created_at.desc())
+        .first()
+    )
+    raw = sig.payload if sig and sig.payload else {}
+    return raw, _normalize_signal_payload(raw)
+
+
 def seed_demo_outcomes(db: Session) -> dict:
     from models.db.rep import Rep
 
@@ -49,7 +60,6 @@ def seed_demo_outcomes(db: Session) -> dict:
     if not rep_row:
         return {"created": 0, "skipped": 0, "reason": f"{DEMO_REP_ID} rep not found"}
 
-    # Demo device
     device = db.query(Device).filter(Device.id == DEMO_DEVICE_ID).first()
     if not device:
         device = Device(
@@ -64,8 +74,6 @@ def seed_demo_outcomes(db: Session) -> dict:
         db.add(device)
         db.commit()
 
-    # Start the weight chain from the latest existing snapshot (or defaults).
-    # This makes the seeder play nicely with any future weight changes.
     latest_snap = (
         db.query(WeightHistory)
         .order_by(WeightHistory.created_at.desc())
@@ -96,6 +104,9 @@ def seed_demo_outcomes(db: Session) -> dict:
             skipped += 1
             continue
 
+        # Capture signals at "visit" time
+        raw_signals, numeric_signals = _signals_for(db, entity_id)
+
         when = datetime.utcnow() - timedelta(days=days_ago, hours=i)
         outcome = Outcome(
             client_outcome_id=client_outcome_id,
@@ -109,18 +120,16 @@ def seed_demo_outcomes(db: Session) -> dict:
             outcome_type=otype,
             actions_taken=actions,
             notes=notes,
-            signals_at_visit={},
+            signals_at_visit=raw_signals,
         )
         db.add(outcome)
         db.commit()
         db.refresh(outcome)
 
-        # Apply Bayesian update and persist a snapshot, mirroring what
-        # OutcomeService.sync_outcomes does. This is what makes the
-        # weight-history endpoint show a real learning trail.
+        # Bayesian update — now actually does something because signals != 0
         new_weights = update_weights(
             current_weights=running_weights,
-            signals_at_visit={},
+            signals_at_visit=numeric_signals,
             outcome_rating=rating,
         )
         delta = _compute_delta(new_weights, running_weights)
@@ -130,7 +139,6 @@ def seed_demo_outcomes(db: Session) -> dict:
             outcome_id=outcome.id,
             weights=new_weights,
             delta=delta or None,
-            # Backdate so the history reflects when the outcome happened, not now.
             created_at=when,
         ))
         db.commit()
