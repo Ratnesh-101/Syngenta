@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import { ThemeProvider } from './context/ThemeContext' 
 
 // Public pages
 import Login from './pages/Login'
@@ -38,34 +39,36 @@ function RoleRedirect() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          {/* Root redirect */}
-          <Route path="/" element={<RoleRedirect />} />
+      <ThemeProvider>
+        <AuthProvider>
+          <Routes>
+            {/* Root redirect */}
+            <Route path="/" element={<RoleRedirect />} />
 
-          {/* Public */}
-          <Route path="/login"    element={<Login />} />
-          <Route path="/register" element={<Register />} />
+            {/* Public */}
+            <Route path="/login"    element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-          {/* Rep routes */}
-          <Route element={<ProtectedRoute requiredRole="rep" />}>
-            <Route path="/today"              element={<Today />} />
-            <Route path="/grower/:entity_id"  element={<GrowerDetail />} />
-            <Route path="/anomalies"          element={<Anomalies />} />
-            <Route path="/devices"            element={<Devices />} />
-          </Route>
+            {/* Rep routes */}
+            <Route element={<ProtectedRoute requiredRole="rep" />}>
+              <Route path="/today"              element={<Today />} />
+              <Route path="/grower/:entity_id"  element={<GrowerDetail />} />
+              <Route path="/anomalies"          element={<Anomalies />} />
+              <Route path="/devices"            element={<Devices />} />
+            </Route>
 
-          {/* Manager routes */}
-          <Route element={<ProtectedRoute requiredRole="manager" />}>
-            <Route path="/manager"                    element={<Overview />} />
-            <Route path="/manager/reps"               element={<Reps />} />
-            <Route path="/manager/reps/:rep_id"       element={<RepDetail />} />
-          </Route>
+            {/* Manager routes */}
+            <Route element={<ProtectedRoute requiredRole="manager" />}>
+              <Route path="/manager"                    element={<Overview />} />
+              <Route path="/manager/reps"               element={<Reps />} />
+              <Route path="/manager/reps/:rep_id"       element={<RepDetail />} />
+            </Route>
 
-          {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
+            {/* Catch-all */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   )
 }
