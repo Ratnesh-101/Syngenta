@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useOfflineQueue } from '../hooks/useOfflineQueue';
@@ -11,8 +12,21 @@ export default function Header({ title, showBack }: HeaderProps) {
   const { rep, logout } = useAuth();
   const navigate = useNavigate();
   const { pendingCount, syncing, sync } = useOfflineQueue();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const isManager = rep?.role === 'manager' || rep?.role === 'admin';
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <header className="bg-white border-b border-forest-100 sticky top-0 z-40">
@@ -86,22 +100,27 @@ export default function Header({ title, showBack }: HeaderProps) {
             )}
 
             {/* User avatar / logout */}
-            <div className="relative group">
-              <button className="w-8 h-8 rounded-full bg-forest-700 text-white text-xs font-bold flex items-center justify-center">
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen((p) => !p)}
+                className="w-8 h-8 rounded-full bg-forest-700 text-white text-xs font-bold flex items-center justify-center"
+              >
                 {rep?.name?.charAt(0).toUpperCase() ?? 'U'}
               </button>
-              <div className="absolute right-0 top-full mt-1 bg-white border border-forest-100 rounded-xl shadow-card-lg p-1 min-w-[140px] hidden group-hover:block z-50">
-                <div className="px-3 py-2 border-b border-forest-50">
-                  <div className="text-xs font-semibold text-forest-900 truncate">{rep?.name}</div>
-                  <div className="text-xs text-sage-500 capitalize">{rep?.role}</div>
+              {menuOpen && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-forest-100 rounded-xl shadow-card-lg p-1 min-w-[140px] z-50">
+                  <div className="px-3 py-2 border-b border-forest-50">
+                    <div className="text-xs font-semibold text-forest-900 truncate">{rep?.name}</div>
+                    <div className="text-xs text-sage-500 capitalize">{rep?.role}</div>
+                  </div>
+                  <button
+                    onClick={() => { setMenuOpen(false); logout(); }}
+                    className="w-full text-left px-3 py-2 text-xs text-clay-600 hover:bg-clay-50 rounded-lg transition-colors font-medium"
+                  >
+                    Sign out
+                  </button>
                 </div>
-                <button
-                  onClick={logout}
-                  className="w-full text-left px-3 py-2 text-xs text-clay-600 hover:bg-clay-50 rounded-lg transition-colors font-medium"
-                >
-                  Sign out
-                </button>
-              </div>
+              )}
             </div>
           </div>
         </div>
