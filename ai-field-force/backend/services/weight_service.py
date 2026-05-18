@@ -83,7 +83,7 @@ class WeightService:
         for outcome in outcomes:
             current_weights = update_weights(
                 current_weights=current_weights,
-                signals_at_visit={},
+                signals_at_visit=outcome.signals_at_visit or {},
                 outcome_rating=int(outcome.outcome_rating),
             )
 
