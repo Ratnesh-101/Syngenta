@@ -69,11 +69,7 @@ class ManagerService:
             )
 
         # Basic counts
-        total_reps = (
-            self.db.query(Rep)
-            .filter(Rep.rep_id.in_(allowed_rep_ids))
-            .count()
-        )
+        total_reps = len(allowed_rep_ids)
         growers = self._allowed_growers_query(allowed_rep_ids).all()
         total_growers = len(growers)
 
