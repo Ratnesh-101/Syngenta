@@ -5,7 +5,7 @@ import OutcomeForm from '../../components/OutcomeForm';
 import { getGrowerBrief } from '../../api/visits';
 import { addToQueue } from '../../api/outcomes';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
-import type { GrowerBrief } from '../../types';
+import type { GrowerBrief, OutcomeType } from '../../types';
 import { getErrorMessage } from '../../api/client';
 
 export default function GrowerDetail() {
@@ -29,7 +29,7 @@ export default function GrowerDetail() {
 
   async function handleOutcomeSubmit(values: {
     rating: number;
-    outcome_type: 'sale' | 'follow_up_needed' | 'no_interest' | 'complaint';
+    outcome_type: OutcomeType;
     actions_taken: string[];
     notes: string;
   }) {

@@ -16,6 +16,7 @@ const OUTCOME_LABELS: Record<OutcomeType, string> = {
   sale: 'Sale Completed',
   follow_up_needed: 'Follow-up Needed',
   no_interest: 'No Interest',
+  complaint: 'Complaint',
   complaint_resolved: 'Complaint Resolved',
 };
 
