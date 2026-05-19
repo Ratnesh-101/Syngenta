@@ -3,3 +3,8 @@
 __pycache__/
 *.pyc
 *.db
+node_modules/
+test_venv/
+dist/
+build/
+!.env.example
