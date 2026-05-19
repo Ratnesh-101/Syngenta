@@ -6,9 +6,10 @@ import type { RepDetails, OutcomeType, AnomalySeverity } from '../../types';
 
 const OUTCOME_LABELS: Record<OutcomeType, { label: string; style: string }> = {
   sale:             { label: 'Sale',            style: 'badge-green' },
-  follow_up_needed: { label: 'Follow-up',       style: 'badge-yellow' },
-  no_interest:      { label: 'No Interest',     style: 'badge-gray' },
-  complaint:        { label: 'Complaint',        style: 'badge-red' },
+  follow_up_needed:    { label: 'Follow-up',          style: 'badge-yellow' },
+  no_interest:         { label: 'No Interest',        style: 'badge-gray' },
+  complaint:           { label: 'Complaint',          style: 'badge-red' },
+  complaint_resolved:  { label: 'Complaint Resolved', style: 'badge-green' }
 };
 
 function severityDot(s: AnomalySeverity) {
