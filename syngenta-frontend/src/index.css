@@ -122,48 +122,113 @@ button {
   -webkit-appearance: none;
 }
 
-/* Dark mode overrides */
+/* ── Dark mode overrides ─────────────────────────── */
 .dark body {
-  background-color: #0e1f17;
-  color: #e6eeea;
+  background-color: #111827;
+  color: #f9fafb;
 }
 
 .dark .card,
 .dark .card-hover {
-  background-color: #132b1e;
-  border-color: #1e4730;
+  background-color: #1f2937;
+  border-color: #374151;
+  color: #f9fafb;
 }
 
 .dark .card-hover:hover {
-  background-color: #1a3828;
-}
-
-.dark .input-field {
-  background-color: #132b1e;
-  border-color: #2d5c40;
-  color: #e6eeea;
+  background-color: #263244;
+  border-color: #4b5563;
 }
 
 .dark header {
-  background-color: #0e1f17;
-  border-color: #1e4730;
+  background-color: #111827;
+  border-color: #1f2937;
+}
+
+.dark .input-field {
+  background-color: #1f2937;
+  border-color: #374151;
+  color: #f9fafb;
+}
+
+.dark .input-field::placeholder {
+  color: #6b7280;
 }
 
 .dark .btn-secondary {
-  background-color: #132b1e;
-  border-color: #2d5c40;
-  color: #a6c4b5;
+  background-color: #1f2937;
+  border-color: #374151;
+  color: #d1fae5;
 }
 
 .dark .btn-ghost {
-  color: #a6c4b5;
+  color: #9ca3af;
 }
 
 .dark .btn-ghost:hover {
-  background-color: #1a3828;
+  background-color: #1f2937;
+  color: #f9fafb;
 }
 
-/*Hindi font*/
+.dark .label {
+  color: #9ca3af;
+}
+
+.dark .badge-gray {
+  background-color: #374151;
+  color: #d1d5db;
+}
+
+.dark .badge-green {
+  background-color: #064e3b;
+  color: #6ee7b7;
+}
+
+.dark .badge-yellow {
+  background-color: #78350f;
+  color: #fcd34d;
+}
+
+.dark .badge-red {
+  background-color: #7f1d1d;
+  color: #fca5a5;
+}
+
+.dark .section-title,
+.dark .page-header {
+  color: #f9fafb;
+}
+
+.dark p,
+.dark span,
+.dark h1,
+.dark h2,
+.dark h3 {
+  color: inherit;
+}
+
+.dark .text-forest-900 { color: #f9fafb; }
+.dark .text-forest-800 { color: #e5e7eb; }
+.dark .text-forest-700 { color: #d1fae5; }
+.dark .text-forest-600 { color: #a7f3d0; }
+.dark .text-sage-600   { color: #9ca3af; }
+.dark .text-sage-500   { color: #6b7280; }
+.dark .text-sage-400   { color: #4b5563; }
+
+.dark .bg-forest-50  { background-color: #1f2937; }
+.dark .bg-forest-100 { background-color: #263244; }
+.dark .bg-sage-50    { background-color: #1f2937; }
+.dark .bg-sage-100   { background-color: #263244; }
+.dark .bg-harvest-50 { background-color: #2d1f0a; }
+.dark .bg-clay-50    { background-color: #2d0f0f; }
+.dark .bg-parchment-50 { background-color: #1f2937; }
+
+.dark .border-forest-100 { border-color: #374151; }
+.dark .border-forest-200 { border-color: #4b5563; }
+.dark .border-sage-100   { border-color: #374151; }
+.dark .border-sage-200   { border-color: #4b5563; }
+
+/* ── Hindi font ──────────────────────────────────── */
 :lang(hi) {
   font-family: 'Noto Sans Devanagari', 'Plus Jakarta Sans', sans-serif;
 }
