@@ -162,3 +162,8 @@ button {
 .dark .btn-ghost:hover {
   background-color: #1a3828;
 }
+
+/*Hindi font*/
+:lang(hi) {
+  font-family: 'Noto Sans Devanagari', 'Plus Jakarta Sans', sans-serif;
+}
