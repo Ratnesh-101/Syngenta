@@ -177,7 +177,7 @@ Full API at `/docs` (Swagger UI) on any running instance.
 | Member | Role |
 |---|---|
 | **Ratnesh Singh** (primary contact) | Backend Lead — scoring engine, manager dashboard, learning system, deployment, document |
-| **Kunal Kumar** | Frontend Lead — React app, mobile-first UX, dark mode, manager flows |
+| **Kunal Kumar Pathak** | Frontend Lead — React app, mobile-first UX, dark mode, manager flows |
 | **Anany Katyayan** | Backend Support — JWT auth, multi-method login, identity merging |
 | **Akshat Om Chaturvedi** | Frontend Support — outcome capture UI, offline queue, sync indicator |
 
